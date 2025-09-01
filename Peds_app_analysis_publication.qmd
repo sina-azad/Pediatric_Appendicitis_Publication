@@ -1,0 +1,953 @@
+---
+title: "Pediatric Acute Appendicits Analysis"
+author: "Sina Azadnajafabad, MD, MPH"
+date: "March 4, 2025"
+---
+
+## packages
+
+```{r}
+# load packages
+pacman::p_load(
+  rio,
+  tidyverse,
+  summarytools,
+  gtsummary,
+  ResourceSelection,
+  pROC,
+  plotROC
+)
+
+# set options for summarytools::dfSummary()
+st_options(dfSummary.graph.col = FALSE, dfSummary.labels.col = FALSE)
+
+```
+
+## data import and transform
+
+```{r}
+# import data
+df <- import("datasets/Pediatric Appendicitis Dataset.sav")
+
+glimpse(df)
+
+
+# transform data
+df_clean <-
+  df |>
+  mutate(
+    sex = factor(
+      case_when(
+        Sex == 0 ~ "Male",
+        Sex == 1 ~ "Female"
+      ),
+      levels = c("Male", "Female")
+    ),
+
+    # age
+    age = Age,
+    age_cat = factor(case_when(
+      age < 5 ~ "<5 y",
+      age >= 5 ~ ">=5 y"
+    )),
+
+    # presence of app in ultrasound
+    us_pos = factor(
+      case_when(
+        uspos == 0 ~ "Negative",
+        uspos == 1 ~ "Positive"
+      ),
+      levels = c("Negative", "Positive")
+    ),
+
+    # appendix diameter (cm)
+    app_diameter = Diameter,
+
+    # symptoms onset duration
+    symptom_duration = factor(
+      case_when(
+        Onset_symptoms_duration == 1 ~ "≤12 hours",
+        Onset_symptoms_duration == 2 ~ "24 hours",
+        Onset_symptoms_duration == 3 ~ "2-3 days",
+        Onset_symptoms_duration == 4 ~ "4-6 days",
+        Onset_symptoms_duration == 5 ~ "≥7 days"
+      ),
+
+      levels = c("≤12 hours", "24 hours", "2-3 days", "4-6 days", "≥7 days")
+    ),
+
+    # type of appendicitis
+    app_type = factor(
+      case_when(
+        Apptype == 0 ~ "Uncomplicated",
+        Apptype == 1 ~ "Complicated"
+      ),
+      levels = c("Uncomplicated", "Complicated")
+    ),
+
+    app_type_binary = Apptype,
+
+    # diarrhea
+    diarrhea = factor(
+      case_when(
+        diarrhea == 0 ~ "Negative",
+        diarrhea == 1 ~ "Positive"
+      ),
+      levels = c("Negative", "Positive")
+    ),
+
+    # WBC before surgery categories
+    WBC_cat = factor(case_when(
+      WBC < 10 ~ "Low (<10,000)",
+      WBC >= 10 ~ "High (≥10,000)"
+    )),
+
+    # neutrophil count before surgery
+    neutrophil_count = NeutrophilC,
+
+    # neutrophil categories
+    neutrophil_cat = factor(case_when(
+      neutrophil_count < 7.5 ~ "Low (<7500)",
+      neutrophil_count >= 7.5 ~ "High (≥7500)"
+    )),
+
+    # neutrophil percentage
+    neutrophil_percent = Neutrophilpercent,
+
+    # temperature (C)
+    temperature = Temperature,
+
+    # tenderness
+    tenderness = factor(
+      case_when(
+        Tenderness == 1 ~ "RLQ",
+        Tenderness == 2 ~ "RLQ and rebound",
+        Tenderness == 3 ~ "RLQ and hypogastric",
+        Tenderness == 4 ~ "Generalized",
+        Tenderness == 5 ~ "Hypogastric",
+        Tenderness == 6 ~ "RLQ and periumbillical",
+        Tenderness == 7 ~ "RLQ and LLQ",
+        Tenderness == 8 ~ "RLQ and epigastric",
+        Tenderness == 9 ~ "LLQ",
+        Tenderness == 10 ~ "Other",
+        Tenderness == 11 ~ "None"
+      ),
+
+      levels = c(
+        "RLQ",
+        "RLQ and rebound",
+        "RLQ and hypogastric",
+        "RLQ and periumbillical",
+        "RLQ and epigastric",
+        "RLQ and LLQ",
+        "LLQ",
+        "Generalized",
+        "Hypogastric",
+        "Other",
+        "None"
+      )
+    )
+  ) |>
+
+  select(
+    sex,
+    age,
+    age_cat,
+    us_pos,
+    app_diameter,
+    symptom_duration,
+    app_type,
+    app_type_binary,
+    diarrhea,
+    CRP,
+    ESR,
+    WBC,
+    WBC_cat,
+    neutrophil_count,
+    neutrophil_cat,
+    neutrophil_percent,
+    temperature,
+    tenderness
+  )
+
+
+# data summarize
+dfSummary(df_clean)
+
+```
+
+## table 1
+
+patient characteristics
+
+```{r}
+table1 <-
+  df_clean |>
+
+  select(
+    app_type,
+    age,
+    sex,
+    us_pos,
+    app_diameter,
+    symptom_duration,
+    diarrhea,
+    tenderness,
+    temperature,
+    ESR,
+    CRP,
+    WBC,
+    WBC_cat,
+    neutrophil_count,
+    neutrophil_cat,
+    neutrophil_percent
+  ) |>
+
+  tbl_summary(
+    by = app_type,
+    type = all_continuous() ~ "continuous",
+
+    statistic = list(
+      all_categorical() ~ "{n} ({p}%)",
+      all_continuous() ~
+        c(
+          "{median} ({p25}, {p75})"
+        )
+    ),
+
+    digits = list(
+      all_continuous() ~ c(1, 1, 1),
+      all_categorical() ~ c(0, 1)
+    ),
+
+    label = list(
+      age ~ "Age, y",
+      sex ~ "Sex",
+      us_pos ~ "Evidence of acute appendicitis in US",
+      app_diameter ~ "Appendix diameter, cm",
+      symptom_duration ~ "Duration of symptoms",
+      diarrhea ~ "Diarrhea",
+      tenderness ~ "Tenderness",
+      temperature ~ "Temperature, °C",
+      ESR ~ "ESR, mm/hr",
+      CRP ~ "CRP, mg/dL",
+      WBC ~ "WBC count, *10\u2079/L",
+      WBC_cat ~ "WBC count category",
+      neutrophil_count ~ "Neutrophil count, *10\u2079/L",
+      neutrophil_cat ~ "Neutrophil count category",
+      neutrophil_percent ~ "Neutrophil percentage"
+    ),
+
+    missing = "no",
+    percent = "column"
+  ) |>
+  add_p(pvalue_fun = ~ style_pvalue(.x, digits = 3)) |>
+  bold_p() |>
+  add_overall() |>
+  modify_header(label ~ "**Variable**") |>
+  modify_spanning_header(c("stat_1", "stat_2") ~ "**Study Group**") |>
+  modify_footnote(
+    all_stat_cols() ~ "Median (interquartile range), or Frequency (%)"
+  ) |>
+  modify_caption("Table 1. Patient characteristics") |>
+  bold_labels()
+
+
+table1
+
+# save table
+table1 |>
+  as_hux_xlsx("results/table 1.xlsx")
+
+```
+
+## regression analysis
+
+We conducted univariable binary logistic regression, with appendicitis type as dependent variable and biomarkers as predictors. Multivariable logistic regression models were adjusted for age, sex, symptom duration, diarrhea, tenderness, body temperature, and positive evidence of acute appendicitis in ultrasound.
+
+The regression models goodness of fit was evaluated using Hosmer-Lemeshow Test (where small values with large p-values indicate a good fit to the data, while large values with p-values below 0.05 indicate a poor fit).
+
+### functions for regression analysis
+
+```{r}
+# function to extract and format odds ratio (OR) with 95% CI (default decimals = 2)
+extract_or_ci <- function(model, decimals = 2) {
+  
+  # compute OR and 95% CI
+  or_ci <- round(exp(cbind(OR = coef(model), confint(model))), decimals)
+
+  # extract values for variable in second row (predictor variable of interest)
+  or_value <- or_ci[2, "OR"]
+  ci_lower <- or_ci[2, "2.5 %"]
+  ci_upper <- or_ci[2, "97.5 %"]
+
+  # create formatting string based on decimals
+  format_string <- paste0(
+    "%.",
+    decimals,
+    "f (%.",
+    decimals,
+    "f-%.",
+    decimals,
+    "f)"
+  )
+
+  # format the output as "OR (95% CI)"
+  result <- sprintf(format_string, or_value, ci_lower, ci_upper)
+
+  return(result)
+}
+
+
+# function to extract and format p-value (default decimals = 3)
+extract_p_value <- function(model, variable_index = 2, decimals = 3) {
+  
+  # get coefficient names and extract variable name
+  variable_name <- rownames(summary(model)$coefficients)[variable_index]
+
+  # extract p-value for the variable_index (default is second row)
+  p_value <- summary(model)$coefficients[variable_index, "Pr(>|z|)"]
+  
+  # round decimals
+  rounded_p <- round(p_value, decimals)
+  
+  # create formatted output with variable name
+  result <- paste0(variable_name, ": p = ", rounded_p)
+
+  return(result)
+}
+
+```
+
+### ESR 
+
+```{r}
+# univariable regression
+model_uni <- glm(app_type_binary ~ ESR, data = df_clean, family = "binomial")
+
+summary(model_uni)
+
+# extract OR and 95% CI, p_value
+extract_or_ci(model_uni)
+extract_p_value(model_uni, variable_index = 2)
+
+# Hosmer-Lemeshow Test to determine the goodness of fit of model
+ResourceSelection::hoslem.test(
+  x = model_uni$y,
+  y = predict(model_uni, type = "response"),
+  g = 10
+)
+
+
+# adjusted multivariable regression
+model_multi <- glm(
+  app_type_binary ~
+    ESR +
+      age +
+      sex +
+      symptom_duration +
+      diarrhea +
+      tenderness +
+      temperature +
+      us_pos,
+  data = df_clean,
+  family = "binomial"
+)
+
+summary(model_multi)
+
+# extract OR and 95% CI, p_value
+extract_or_ci(model_multi)
+extract_p_value(model_multi, variable_index = 2)
+
+# Hosmer-Lemeshow Test to determine the goodness of fit of model
+ResourceSelection::hoslem.test(
+  x = model_multi$y,
+  y = predict(model_multi, type = "response"),
+  g = 10
+)
+
+```
+
+### CRP 
+
+```{r}
+# univariable regression
+model_uni <- glm(app_type_binary ~ CRP, data = df_clean, family = "binomial")
+
+summary(model_uni)
+
+# OR and 95% CI, p_value
+extract_or_ci(model_uni)
+extract_p_value(model_uni, variable_index = 2)
+
+# Hosmer-Lemeshow Test to determine the goodness of fit of model
+ResourceSelection::hoslem.test(
+  x = model_uni$y,
+  y = predict(model_uni, type = "response"),
+  g = 10
+)
+
+
+# adjusted multivariable regression
+model_multi <- glm(
+  app_type_binary ~
+    CRP +
+      age +
+      sex +
+      symptom_duration +
+      diarrhea +
+      tenderness +
+      temperature +
+      us_pos,
+  data = df_clean,
+  family = "binomial"
+)
+
+summary(model_multi)
+
+# OR and 95% CI, p_value
+extract_or_ci(model_multi)
+extract_p_value(model_multi, variable_index = 2)
+
+# Hosmer-Lemeshow Test to determine the goodness of fit of model
+ResourceSelection::hoslem.test(
+  x = model_multi$y,
+  y = predict(model_multi, type = "response"),
+  g = 10
+)
+
+```
+
+### WBC 
+
+```{r}
+# univariable regression
+model_uni <- glm(app_type_binary ~ WBC, data = df_clean, family = "binomial")
+
+summary(model_uni)
+
+# OR and 95% CI, p_value
+extract_or_ci(model_uni)
+extract_p_value(model_uni, variable_index = 2)
+
+# Hosmer-Lemeshow Test to determine the goodness of fit of model
+ResourceSelection::hoslem.test(
+  x = model_uni$y,
+  y = predict(model_uni, type = "response"),
+  g = 10
+)
+
+
+# adjusted multivariable regression
+model_multi <- glm(
+  app_type_binary ~
+    WBC +
+      age +
+      sex +
+      symptom_duration +
+      diarrhea +
+      tenderness +
+      temperature +
+      us_pos,
+  data = df_clean,
+  family = "binomial"
+)
+
+summary(model_multi)
+
+# OR and 95% CI, p_value
+extract_or_ci(model_multi)
+extract_p_value(model_multi, variable_index = 2)
+
+# Hosmer-Lemeshow Test to determine the goodness of fit of model
+ResourceSelection::hoslem.test(
+  x = model_multi$y,
+  y = predict(model_multi, type = "response"),
+  g = 10
+)
+
+```
+
+### neutrophil_count 
+
+```{r}
+# univariable regression
+model_uni <- glm(app_type_binary ~ neutrophil_count, data = df_clean, family = "binomial")
+
+summary(model_uni)
+
+# OR and 95% CI, p_value
+extract_or_ci(model_uni)
+extract_p_value(model_uni, variable_index = 2)
+
+# Hosmer-Lemeshow Test to determine the goodness of fit of model
+ResourceSelection::hoslem.test(
+  x = model_uni$y,
+  y = predict(model_uni, type = "response"),
+  g = 10
+)
+
+
+# adjusted multivariable regression
+model_multi <- glm(
+  app_type_binary ~
+    neutrophil_count +
+      age +
+      sex +
+      symptom_duration +
+      diarrhea +
+      tenderness +
+      temperature +
+      us_pos,
+  data = df_clean,
+  family = "binomial"
+)
+
+summary(model_multi)
+
+# OR and 95% CI, p_value
+extract_or_ci(model_multi)
+extract_p_value(model_multi, variable_index = 2)
+
+# Hosmer-Lemeshow Test to determine the goodness of fit of model
+ResourceSelection::hoslem.test(
+  x = model_multi$y,
+  y = predict(model_multi, type = "response"),
+  g = 10
+)
+
+```
+
+## ROC curve analysis
+
+We examined the variables which were significantly associated with complicated acute appendicitis using receiver operating characteristic (ROC) curve analysis to determine predictive cut-offs. Sensitivity, specificity, and area under the curve (AUC) were reported. The Youden index method was used to identify the optimal cut-off for complicated acute appendicits. 
+
+### functions for ROC analysis
+
+```{r}
+# function to calcualte roc curve p-value using DeLong's method (default alternative: two.sided)
+roc_pvalue <- function(roc_obj, alternative = "two.sided") {
+  
+  # Calculate AUC and its variance using DeLong method
+  auc_value <- as.numeric(auc(roc_obj))
+  var_auc <- var(roc_obj)
+  
+  # Calculate z-score
+  z_score <- (auc_value - 0.5) / sqrt(var_auc)
+  
+  # Calculate p-value based on alternative hypothesis
+  if (alternative == "greater") {
+    p_value <- pnorm(z_score, lower.tail = FALSE)
+  } else if (alternative == "less") {
+    p_value <- pnorm(z_score, lower.tail = TRUE)
+  } else { # two.sided
+    p_value <- 2 * pnorm(abs(z_score), lower.tail = FALSE)
+  }
+  
+  return(round(p_value, 3))
+}
+
+```
+
+### CRP
+
+```{r}
+# create the ROC object
+roc_obj_1 <- roc(response = df_clean$app_type, predictor = df_clean$CRP)
+
+roc_obj_1
+
+
+# plot the ROC curve (aes: [d = disease status] & [m = marker])
+plot1 <- ggplot(
+  df_clean,
+  aes(d = as.numeric(app_type), m = CRP, color = "CRP")
+) +
+  geom_roc(n.cuts = 0) +
+  theme_minimal() +
+  theme(
+    text = element_text(size = 16),
+    axis.title = element_text(size = 18, face = "bold"),
+    axis.text = element_text(size = 14),
+    legend.position = "bottom"
+  ) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+  labs(x = "1 - Specificity", y = "Sensitivity", color = "Biomarker") +
+  scale_color_manual(values = c("CRP" = "#374E55FF"), labels = c("CRP"))
+
+plot1
+
+
+# optimal cutoff point and performance measures
+optimal_coords_1 <- coords(
+  roc_obj_1,
+  "best",
+  ret = "all",
+  best.method = "youden"
+)
+
+optimal_coords_1
+
+
+# optimal threshold
+optimal_coords_1$threshold
+round(optimal_coords_1$threshold, 1)
+
+
+# ROC AUC + 95% CI
+round(auc(roc_obj_1), 3)
+ci.auc(roc_obj_1)
+
+
+# sensitivity and specificity at the optimum cutoff point
+coords_opt1 <- coords(roc_obj_1, 19.5, ret = c("specificity", "sensitivity"))
+coords_opt1
+round(coords_opt1 * 100, 1)
+
+
+# roc curve p-value
+roc_pvalue(roc_obj_1)
+
+
+# add optimal point to ROC plot
+plot1 <- plot1 +
+  geom_point(
+    aes(x = 1 - coords_opt1$specificity, y = coords_opt1$sensitivity),
+    color = "red2",
+    size = 2
+  ) +
+  geom_text(
+    aes(
+      x = 1 - coords_opt1$specificity,
+      y = coords_opt1$sensitivity,
+      label = "19.5"
+    ),
+    vjust = -1.2,
+    hjust = 0.5,
+    color = "red2",
+    size = 7
+  )
+
+plot1
+
+
+# add annotations to plot
+plot1 <- plot1 +
+  annotate(
+    "text",
+    x = 0.70,
+    y = 0.30,
+    size = 5,
+    label = paste0("AUC = ", 0.687, " (95% CI = ", 0.551, "-", 0.823, ")")
+  )
+
+plot1
+
+
+# calculate the maximum value of Youden index by [sens + spec - 1]
+optimal_coords_1$sensitivity + optimal_coords_1$specificity - 1
+
+```
+
+### WBC
+
+```{r}
+# create the ROC object
+roc_obj_2 <- roc(response = df_clean$app_type, predictor = df_clean$WBC)
+
+roc_obj_2
+
+
+# plot the ROC curve (aes: [d = disease status] & [m = marker])
+plot2 <- ggplot(
+  df_clean,
+  aes(d = as.numeric(app_type), m = WBC, color = "WBC")
+) +
+  geom_roc(n.cuts = 0) +
+  theme_minimal() +
+  theme(
+    text = element_text(size = 16), 
+    axis.title = element_text(size = 18, face = "bold"), 
+    axis.text = element_text(size = 14), 
+    legend.position = "bottom" 
+  ) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+  labs(x = "1 - Specificity", y = "Sensitivity", color = "Biomarker") +
+  scale_color_manual(values = c("WBC" = "#00A1D5FF"), labels = c("WBC count"))
+
+plot2
+
+
+# optimal cutoff point and performance measures
+optimal_coords_2 <- coords(
+  roc_obj_2,
+  "best",
+  ret = "all",
+  best.method = "youden"
+)
+
+optimal_coords_2
+
+
+# optimal threshold
+optimal_coords_2$threshold
+round(optimal_coords_2$threshold, 1)
+
+
+# calculate AUC + 95% CI
+round(auc(roc_obj_2), 3)
+ci.auc(roc_obj_2)
+
+
+# sensitivity and specificity at the optimum cutoff point
+coords_opt_2 <- coords(roc_obj_2, 16.345, ret = c("specificity", "sensitivity"))
+coords_opt_2
+round(coords_opt_2 * 100, 1)
+
+
+# roc curve p-value
+roc_pvalue(roc_obj_2)
+
+
+# add optimal point to ROC plot
+plot2 <- plot2 +
+  geom_point(
+    aes(x = 1 - coords_opt_2$specificity, y = coords_opt_2$sensitivity),
+    color = "red2",
+    size = 2
+  ) +
+  geom_text(
+    aes(
+      x = 1 - coords_opt_2$specificity,
+      y = coords_opt_2$sensitivity,
+      label = "16.3"
+    ),
+    vjust = -1.2,
+    hjust = 0.5,
+    color = "red2",
+    size = 7
+  )
+
+plot2
+
+
+# add annotations to plot
+plot2 <- plot2 +
+  annotate(
+    "text",
+    x = 0.70,
+    y = 0.30,
+    size = 5,
+    label = paste0("AUC = ", 0.65, " (95% CI = ", 0.495, "-", 0.806, ")")
+  )
+
+plot2
+
+
+# calculate the maximum value of Youden index by [sens + spec - 1]
+optimal_coords_2$sensitivity + optimal_coords_2$specificity - 1
+
+```
+
+### neutrophil_count 
+
+```{r}
+# create the ROC object
+roc_obj_3 <- roc(response = df_clean$app_type, predictor = df_clean$neutrophil_count)
+
+roc_obj_3
+
+
+# plot the ROC curve (aes: [d = disease status] & [m = marker])
+plot3 <- ggplot(
+  df_clean,
+  aes(
+    d = as.numeric(app_type),
+    m = neutrophil_count,
+    color = "neutrophil_count"
+  )
+) +
+  geom_roc(n.cuts = 0) +
+  theme_minimal() +
+  theme(
+    text = element_text(size = 16),
+    axis.title = element_text(size = 18, face = "bold"),
+    axis.text = element_text(size = 14),
+    legend.position = "bottom"
+  ) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+  labs(x = "1 - Specificity", y = "Sensitivity", color = "Biomarker") +
+  scale_color_manual(
+    values = c("neutrophil_count" = "#DF8F44FF"),
+    labels = c("Neutrophil count")
+  )
+
+plot3
+
+
+# optimal cutoff point and performance measures
+optimal_coords_3 <- coords(
+  roc_obj_3,
+  "best",
+  ret = "all",
+  best.method = "youden"
+)
+
+optimal_coords_3
+
+
+# optimal threshold
+optimal_coords_3$threshold
+round(optimal_coords_3$threshold, 1)
+
+
+# calculate AUC + 95% CI
+round(auc(roc_obj_3), 3)
+ci.auc(roc_obj_3)
+
+
+# sensitivity and specificity at the optimum cutoff point
+coords_opt_3 <- coords(roc_obj_3, 13.35, ret = c("specificity", "sensitivity"))
+coords_opt_3
+round(coords_opt_3 * 100, 1)
+
+
+# roc curve p-value
+roc_pvalue(roc_obj_3)
+
+
+# add optimal point to ROC plot
+plot3 <- plot3 +
+  geom_point(
+    aes(x = 1 - coords_opt_3$specificity, y = coords_opt_3$sensitivity),
+    color = "red2",
+    size = 2
+  ) +
+  geom_text(
+    aes(
+      x = 1 - coords_opt_3$specificity,
+      y = coords_opt_3$sensitivity,
+      label = "13.3"
+    ),
+    vjust = -1.2,
+    hjust = 0.5,
+    color = "red2",
+    size = 7
+  )
+
+plot3
+
+
+# add annotations to plot
+plot3 <- plot3 +
+  annotate(
+    "text",
+    x = 0.70,
+    y = 0.30,
+    size = 5,
+    label = paste0("AUC = ", 0.68, " (95% CI = ", 0.541, "-", 0.818, ")")
+  )
+
+plot3
+
+
+# calculate the maximum value of Youden index by [sens + spec - 1]
+optimal_coords_3$sensitivity + optimal_coords_3$specificity - 1
+
+```
+
+### CRP, WBC, Neut
+
+All three biomarkers plotted in one ROC curve:
+
+```{r}
+# create roc objects for each biomarker
+roc_crp <- roc(response = df_clean$app_type, predictor = df_clean$CRP)
+roc_wbc <- roc(response = df_clean$app_type, predictor = df_clean$WBC)
+roc_neutrophil <- roc(
+  response = df_clean$app_type,
+  predictor = df_clean$neutrophil_count
+)
+
+
+# convert roc objects to data frames
+roc_crp_df <- data.frame(
+  specificity = rev(roc_crp$specificities),
+  sensitivity = rev(roc_crp$sensitivities),
+  marker = "CRP"
+)
+
+roc_wbc_df <- data.frame(
+  specificity = rev(roc_wbc$specificities),
+  sensitivity = rev(roc_wbc$sensitivities),
+  marker = "WBC count"
+)
+
+roc_neutrophil_df <- data.frame(
+  specificity = rev(roc_neutrophil$specificities),
+  sensitivity = rev(roc_neutrophil$sensitivities),
+  marker = "Neutrophil count"
+)
+
+# combine all into one data frame
+roc_data <- bind_rows(roc_crp_df, roc_wbc_df, roc_neutrophil_df)
+
+
+# plot multiple roc curves
+plot4 <- ggplot(
+  roc_data,
+  aes(x = 1 - specificity, y = sensitivity, color = marker)
+) +
+  geom_line(size = 1) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed") + # reference line
+  theme_minimal() +
+  theme(
+    text = element_text(size = 16),
+    axis.title = element_text(size = 18, face = "bold"),
+    axis.text = element_text(size = 14),
+    legend.position = "bottom"
+  ) +
+  labs(x = "1 - Specificity", y = "Sensitivity", color = "Biomarker") +
+  scale_color_manual(
+    values = c(
+      "CRP" = "#374E55FF",
+      "WBC count" = "#00A1D5FF",
+      "Neutrophil count" = "#DF8F44FF"
+    )
+  )
+
+plot4
+
+```
+
+### figure 1
+
+```{r}
+# figure in 4 columns
+figure1 <- ggpubr::ggarrange(
+  plot1,
+  plot2,
+  plot3,
+  plot4,
+  ncol = 2,
+  nrow = 2,
+  align = "hv", # aligns both horizontally & vertically
+  widths = c(1, 1), # ensures equal column widths
+  heights = c(1, 1), # ensures equal row heights
+  labels = c("A", "B", "C", "D"), # add labels to each panel
+  font.label = list(size = 24, face = "bold") # customize label size
+)
+
+figure1
+
+# save plot
+ggsave(
+  filename = "results/figure1.jpg",
+  plot = figure1,
+  dpi = 600,
+  height = 12,
+  width = 17
+)
+
+```
