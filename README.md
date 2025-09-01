@@ -1,0 +1,1 @@
+This repository contains analysis codes for publication ["Analysis of Incidence and Risk Factors of Complicated Acute Appendicitis in Children: Evidence From a Tertiary Pediatric Center"](https://pubmed.ncbi.nlm.nih.gov/40171038/), by Azadnajafabad et al., published in the *International Journal of Pediatrics* (DOI: 10.1155/ijpe/1230753).
